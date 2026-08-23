@@ -12,7 +12,10 @@ def perplexity(model, tok, max_tokens: int = 2048, stride: int = 512) -> float:
     import torch
     from datasets import load_dataset
 
-    text = "\n\n".join(load_dataset("wikitext", "wikitext-2-raw-v1", split="test")["text"])
+    # "wikitext" (bare, script-based) is deprecated on the Hub -- current
+    # `datasets` versions reject it ("Repository id must be 'namespace/name'").
+    # The namespaced, Parquet-converted replacement is Salesforce/wikitext.
+    text = "\n\n".join(load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="test")["text"])
     encodings = tok(text, return_tensors="pt")
     seq_len = min(encodings.input_ids.size(1), max_tokens)
 

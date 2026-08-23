@@ -65,10 +65,25 @@ version, so the "fix" just installed a different, still-wrong build.
 - Still requires a runtime restart after the reinstall (same reason as
   attempt #1) — the cell says so explicitly.
 
-**Status:** pushed, not yet confirmed against a live Colab run. Waiting on
-the user to re-run with a fully reloaded notebook (see caveat below) and
-report whether `torch.cuda.is_available()` comes back `True` after the
-restart.
+**Status:** confirmed fixed. V1's actual run: model loaded, full benchmark
+ran on the real T4 (`tokens_per_sec: 69.5`, `vram_gb: 1.72`,
+`gpu_util_pct: 41.0`, TTFT/TPOT/E2E all populated) — both this fix and the
+langchain fix in #1 are working end to end. Ran into issue #3 next.
+
+## 3. Perplexity step fails: `Invalid HF URI ... Repository id must be 'namespace/name', got 'wikitext'`
+
+**Symptom:** after benchmarking succeeds, `src/evaluate.py::perplexity()`
+fails calling `datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="test")`.
+
+**Root cause:** the bare `"wikitext"` dataset id is a legacy script-based
+Hub dataset that's been deprecated/removed from resolution in current
+`datasets` versions — it now has to be referenced by its namespaced,
+Parquet-converted replacement.
+
+**Fix applied** (`src/evaluate.py`): changed the dataset id to
+`"Salesforce/wikitext"` (same subset/split args otherwise).
+
+**Status:** pushed, not yet confirmed against a live Colab run.
 
 ## Caveat that cost a round-trip: notebook file vs. cloned repo are separate
 
@@ -87,7 +102,8 @@ actually just not loaded yet.
   actually the one forcing the torch reinstall? Not yet isolated —
   attempt #2 sidesteps the question by restoring whatever was there
   originally rather than needing to know.
-- Once V1 runs clean, V2's sweep includes `attn_implementation=flash_attention_2`,
+- Once V1 runs clean end to end (benchmark + perplexity), V2's sweep
+  includes `attn_implementation=flash_attention_2`,
   which is *expected* to fail on T4 (Turing has no FA2 support) — that's a
   planned negative result, not a bug, and should show up as an `error` field
   on that one row in `results/experiments.jsonl`, not a crash.
