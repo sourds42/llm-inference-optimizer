@@ -8,24 +8,25 @@ real numbers land.*
 
 - Target model: Qwen/Qwen3-0.6B, Colab T4 (float16, no bf16/FP8)
 - Constraints (`configs/constraints.yaml`): quality ≥ 95% of FP16 baseline
-  accuracy, P95 latency ≤ `__` ms, VRAM ≤ `__` GB
-- What "quality" means here: HellaSwag accuracy via the live vLLM server,
-  expressed as % recovered relative to the FP16 baseline (not an absolute
-  score) -- perplexity tracked alongside as a secondary signal.
+  perplexity-recovery, P95 latency ≤ `__` ms, VRAM ≤ `__` GB
+- What "quality" means here: sliding-window perplexity computed in-process
+  (no lm_eval), expressed as % recovered relative to the FP16 baseline's
+  perplexity (not an absolute accuracy score) -- see "what this lightweight
+  stack trades away" in the README for why HellaSwag-style accuracy isn't
+  part of this run.
 
 ## 2. V1 → V2: baseline and the quantization/runtime-opt ladder
 
 *Fill in after `eval/run_v2_quant_sweep.py`.*
 
 - Full one-variable-at-a-time results table (pull from `results/experiments.jsonl`)
-- Which quantization method won on which axis (size vs. quality vs. speed)
-- Runtime-opt findings: batch size / context length / prefix caching /
-  FlashAttention / speculative decoding -- what helped, what didn't, what
-  failed outright (FlashAttention on T4 is *expected* to fail or fall back;
-  report that as a real, documented result)
-- Anything that needed debugging beyond what the source notebooks had
-  already solved (bnb serving was not validated pre-Colab-run -- document
-  what broke and how it was fixed, or that it wasn't)
+- bnb INT8 vs. INT4 vs. FP16 -- size/VRAM at load, perplexity, tokens/sec
+- Runtime-opt findings: batch size / context length / KV-cache /
+  attention implementation -- what helped, what didn't, what failed
+  outright (`attn_implementation=flash_attention_2` on T4 is *expected* to
+  fail; report that as a real, documented result, not something to omit)
+- Any config that produced an `error` row -- what it was and whether it was
+  the expected FlashAttention failure or something else worth debugging
 
 ## 3. V3: deterministic optimizer vs. manual selection
 
@@ -57,13 +58,14 @@ real numbers land.*
 
 ## 5. Failure analysis & honest limitations
 
-- Configs that failed outright, and why (T4 kernel limits, VRAM OOM,
-  unvalidated bnb path, etc. -- pull from `results/vllm_*.log`)
+- Configs that failed outright, and why (pull `row["error"]` from
+  `results/experiments.jsonl` -- the FlashAttention-on-T4 failure is
+  expected; anything else is worth a closer look)
 - Where the cost model (`src/cost.py`) is illustrative rather than a real
   quote -- don't let a reader mistake $/request here for a production number
-- Subprocess isolation (`src/serve.py`) is not a real sandbox -- no
-  `Docker --network=none`/seccomp -- same caveat the sibling
-  `agent-review-loop` repo flags for its own tool execution
+- TTFT is approximated (separate 1-token pass, not true streaming) and TPOT
+  is an even split of remaining generation time, not per-token measured
+  gaps -- see `src/benchmark.py`'s docstring; don't overstate precision here
 - Single-run measurements: no repeated-trial variance reported unless you
   added it -- note if a number could be noise rather than signal
 

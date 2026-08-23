@@ -1,9 +1,8 @@
 """
-A single ExperimentConfig fully describes one point in the search space --
-the same "one YAML fully describes a run" idea as llm-inference-lab's
-Config, extended with the runtime-optimization knobs (batch size, context
-length, KV-cache/prefix caching, attention backend, speculative decoding)
-and quantization method the new search space sweeps over.
+A single ExperimentConfig fully describes one point in the search space.
+Lightweight-stack version: no vLLM server, no llmcompressor calibration --
+bitsandbytes quantizes at model-load time, and runtime-opt knobs map onto
+plain `transformers.generate()` kwargs instead of vLLM CLI flags.
 """
 from __future__ import annotations
 from dataclasses import dataclass, asdict
@@ -19,33 +18,23 @@ class ExperimentConfig:
 
     # model + quantization
     model_id: str = "Qwen/Qwen3-0.6B"
-    quant_method: str = "fp16"                     # fp16 | bnb_int8 | bnb_int4 | gptq_w4a16 | gptq_w8a16 | awq_w4a16
-    quant_path: str = ""                           # filled in by quantize() if left empty
+    quant_method: str = "fp16"                     # fp16 | bnb_int8 | bnb_int4
 
-    # serving (T4-friendly defaults; Turing has no native bf16/FP8)
+    # generation (T4-friendly defaults; Turing has no native bf16/FP8)
     dtype: str = "float16"
-    max_model_len: int = 2048
-    max_num_seqs: int = 8                          # batch-size knob
-    gpu_memory_utilization: float = 0.85
-    enable_prefix_caching: bool = True
-    attention_backend: Optional[str] = None        # None = vLLM default; "FLASH_ATTN" to force-try
-    speculative_model: Optional[str] = None
-    num_speculative_tokens: int = 0
-    port: int = 8000
-    served_name: str = "model"
-
-    # quantization calibration (GPTQ/AWQ)
-    calib_samples: int = 256
-    calib_maxlen: int = 512
+    batch_size: int = 4                            # batch-size tuning
+    max_new_tokens: int = 64
+    context_len: int = 512                         # context-length optimization (prompt truncation)
+    use_cache: bool = True                         # KV-cache on/off
+    attn_implementation: str = "sdpa"               # sdpa | eager | flash_attention_2 (expected to fail on T4)
+    assistant_model_id: Optional[str] = None        # speculative decoding draft model, best-effort/optional
 
     # benchmark
-    bench_requests: int = 40
-    bench_concurrency: int = 8
-    bench_output_tokens: int = 64
+    bench_requests: int = 20                        # total prompts, run in batches of batch_size
 
-    # evaluation
-    eval_task: str = "hellaswag"
-    eval_limit: int = 100
+    # evaluation (perplexity only in this lightweight path)
+    eval_max_tokens: int = 2048
+    eval_stride: int = 512
 
     # cost -- illustrative $/GPU-hr, check current pricing before treating as real
     gpu_hourly_usd: float = 0.35

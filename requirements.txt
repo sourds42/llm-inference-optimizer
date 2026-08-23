@@ -1,5 +1,6 @@
 # Local-installable (no GPU needed) -- config, optimizer, agent-graph logic,
-# and the deterministic test suite all run on this alone.
+# the deterministic test suite, and the results-dashboard demo all run on
+# this alone.
 pyyaml>=6.0
 langgraph>=0.2,<0.3
 langchain-core>=0.3,<0.4
@@ -7,6 +8,7 @@ pytest>=8.0
 matplotlib>=3.8
 pandas>=2.0
 numpy>=1.26
+gradio>=4.0
 
 # optional, only needed for real V4 agent backends:
 # requests        (OllamaClient)

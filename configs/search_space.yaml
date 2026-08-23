@@ -1,38 +1,39 @@
 # One-variable-at-a-time sweep off a single base config, per the spec's
 # "changing one variable at a time" experiment design. Every axis value
 # produces one ExperimentConfig identical to `base` except that one field.
+# Lightweight stack (transformers + bitsandbytes, no vLLM) -- kept small on
+# purpose so the whole sweep finishes in minutes, not hours, on a T4.
 base:
   model_id: "Qwen/Qwen3-0.6B"
   quant_method: "fp16"
   dtype: "float16"
-  max_model_len: 2048
-  max_num_seqs: 8
-  gpu_memory_utilization: 0.85
-  enable_prefix_caching: true
-  attention_backend: null
-  num_speculative_tokens: 0
-  calib_samples: 256
-  calib_maxlen: 512
-  bench_requests: 40
-  bench_concurrency: 8
-  bench_output_tokens: 64
-  eval_task: "hellaswag"
-  eval_limit: 100
+  batch_size: 4
+  max_new_tokens: 64
+  context_len: 512
+  use_cache: true
+  attn_implementation: "sdpa"
+  assistant_model_id: null
+  bench_requests: 20
+  eval_max_tokens: 2048
+  eval_stride: 512
   gpu_hourly_usd: 0.35
   results_dir: "results"
 
 axes:
-  # quantization ladder
-  quant_method: ["bnb_int8", "bnb_int4", "gptq_w4a16", "gptq_w8a16", "awq_w4a16"]
+  # quantization ladder (bitsandbytes only -- see src/quantize.py)
+  quant_method: ["bnb_int8", "bnb_int4"]
   # batch-size tuning
-  max_num_seqs: [4, 16, 32]
+  batch_size: [1, 8, 16]
   # context-length optimization
-  max_model_len: [1024, 4096]
-  # KV-cache / prefix caching
-  enable_prefix_caching: [false]
-  # FlashAttention -- expected to fall back / fail on T4 (Turing has no FA2
-  # support); see src/runtime_opts.py. Captured as an honest negative result.
-  attention_backend: ["FLASH_ATTN"]
-  # speculative decoding -- best-effort; may not fit T4 VRAM alongside a
-  # draft model at this model size.
-  num_speculative_tokens: [3, 5]
+  context_len: [256, 1024]
+  # KV-cache toggle
+  use_cache: [false]
+  # FlashAttention -- "flash_attention_2" is expected to fail or fall back
+  # on T4 (Turing has no FA2 support); captured as an honest negative result.
+  attn_implementation: ["eager", "flash_attention_2"]
+
+# Speculative decoding (transformers' assisted generation via
+# assistant_model_id) is left out of the default sweep: no smaller draft
+# model in the same tokenizer family was readily available for
+# Qwen3-0.6B at this size. The field exists on ExperimentConfig if you want
+# to try it manually with a compatible draft model.

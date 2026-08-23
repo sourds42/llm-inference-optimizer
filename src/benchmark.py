@@ -1,64 +1,52 @@
 """
-Streaming async load-test, extended from llm-inference-lab/src/benchmark.py
-to also report TPOT (mean inter-token latency after the first token) and a
-VRAM/GPU-utilization sample taken right after the load -- vLLM's own
-/metrics doesn't expose instantaneous VRAM, and torch isn't necessarily
-importable in the same process as the benchmark client.
+In-process benchmark: generate directly with the already-loaded HF model --
+no server, no separate client process, no vLLM. Deliberately simple:
+keeping the Colab install and the benchmark harness itself lightweight was
+an explicit priority over exactly matching a production serving stack's
+percentile methodology.
+
+TTFT is approximated with a separate max_new_tokens=1 pass rather than true
+token-by-token streaming (transformers' TextIteratorStreamer doesn't
+cleanly support batch_size > 1) -- documented here rather than silently
+assumed exact. TPOT is the remaining generation time divided evenly across
+the rest of the batch's tokens, not each token's individually measured gap.
 """
 from __future__ import annotations
-import asyncio, subprocess, time
+import time
+import subprocess
+
+_assistant_models = {}
 
 
-async def _one(aclient, prompt, out_tokens):
-    t0 = time.perf_counter()
-    ttft = None
-    token_times = []
-    stream = await aclient.completions.create(
-        model="model", prompt=prompt, max_tokens=out_tokens, temperature=0.7, stream=True)
-    async for chunk in stream:
-        if chunk.choices and chunk.choices[0].text:
-            now = time.perf_counter()
-            if ttft is None:
-                ttft = now - t0
-            token_times.append(now)
-    e2e = time.perf_counter() - t0
-    tpot = ((token_times[-1] - token_times[0]) / (len(token_times) - 1)) if len(token_times) > 1 else 0.0
-    return ttft or 0.0, e2e, len(token_times), tpot
+def _load_assistant(model_id, dtype):
+    if model_id not in _assistant_models:
+        from transformers import AutoModelForCausalLM
+        _assistant_models[model_id] = AutoModelForCausalLM.from_pretrained(
+            model_id, torch_dtype=dtype, device_map="cuda")
+    return _assistant_models[model_id]
 
 
-async def _run(base_url, n_reqs, conc, out_tokens):
-    from openai import AsyncOpenAI
-    aclient = AsyncOpenAI(base_url=base_url, api_key="x")
-    # distinct prompts so we don't inflate prefix-cache hits
-    prompts = [f"Write {out_tokens} tokens explaining ML-serving idea number {i}:" for i in range(n_reqs)]
-    sem = asyncio.Semaphore(conc)
-    rows = []
+def _run_batch(model, tok, prompts, cfg):
+    import torch
+    inputs = tok(prompts, return_tensors="pt", padding=True,
+                 truncation=True, max_length=cfg.context_len).to(model.device)
+    gen_kwargs = dict(do_sample=True, temperature=0.7, use_cache=cfg.use_cache,
+                       pad_token_id=tok.pad_token_id)
+    if cfg.assistant_model_id:
+        gen_kwargs["assistant_model"] = _load_assistant(cfg.assistant_model_id, model.dtype)
 
-    async def worker(p):
-        async with sem:
-            rows.append(await _one(aclient, p, out_tokens))
+    with torch.no_grad():
+        t0 = time.perf_counter()
+        model.generate(**inputs, max_new_tokens=1, **gen_kwargs)
+        ttft = time.perf_counter() - t0
 
-    wall0 = time.perf_counter()
-    await asyncio.gather(*(worker(p) for p in prompts))
-    wall = time.perf_counter() - wall0
+        t1 = time.perf_counter()
+        out = model.generate(**inputs, max_new_tokens=cfg.max_new_tokens, **gen_kwargs)
+        e2e = ttft + (time.perf_counter() - t1)
 
-    ttfts = sorted(r[0] for r in rows)
-    e2es = sorted(r[1] for r in rows)
-    tpots = sorted(r[3] for r in rows if r[3] > 0)
-    toks = sum(r[2] for r in rows)
-    pct = lambda xs, q: xs[min(len(xs) - 1, int(len(xs) * q))] if xs else 0.0
-    return {
-        "requests": n_reqs, "concurrency": conc, "wall_s": round(wall, 2),
-        "tokens_per_sec": round(toks / wall, 1),
-        "throughput_req_s": round(n_reqs / wall, 3),
-        "ttft_p50_ms": round(pct(ttfts, .50) * 1000),
-        "ttft_p95_ms": round(pct(ttfts, .95) * 1000),
-        "tpot_p50_ms": round(pct(tpots, .50) * 1000, 2),
-        "tpot_p95_ms": round(pct(tpots, .95) * 1000, 2),
-        "e2e_p50_ms": round(pct(e2es, .50) * 1000),
-        "e2e_p95_ms": round(pct(e2es, .95) * 1000),
-        "e2e_p99_ms": round(pct(e2es, .99) * 1000),
-    }
+    n_generated = int((out.shape[1] - inputs["input_ids"].shape[1]) * out.shape[0])
+    tpot = (e2e - ttft) / max(cfg.max_new_tokens - 1, 1)
+    return ttft, e2e, n_generated, tpot
 
 
 def sample_gpu_stats() -> dict:
@@ -77,9 +65,33 @@ def sample_gpu_stats() -> dict:
         return {"vram_gb": 0.0, "gpu_util_pct": 0.0}
 
 
-def benchmark(base_url, requests=40, concurrency=8, output_tokens=64) -> dict:
-    """Synchronous entry point. GPU stats are sampled immediately after the
-    load test so the reading reflects steady-state usage, not an idle server."""
-    result = asyncio.run(_run(base_url, requests, concurrency, output_tokens))
+def benchmark(model, tok, cfg) -> dict:
+    """Runs cfg.bench_requests prompts in batches of cfg.batch_size,
+    entirely in-process against the already-loaded model."""
+    n_batches = max(1, cfg.bench_requests // cfg.batch_size)
+
+    ttfts, e2es, tpots, total_tokens = [], [], [], 0
+    wall0 = time.perf_counter()
+    for b in range(n_batches):
+        prompts = [f"Write a short paragraph about topic number {b * cfg.batch_size + i}:"
+                   for i in range(cfg.batch_size)]
+        ttft, e2e, n_gen, tpot = _run_batch(model, tok, prompts, cfg)
+        ttfts.append(ttft); e2es.append(e2e); tpots.append(tpot); total_tokens += n_gen
+    wall = time.perf_counter() - wall0
+
+    pct = lambda xs, q: sorted(xs)[min(len(xs) - 1, int(len(xs) * q))] if xs else 0.0
+    n_reqs = n_batches * cfg.batch_size
+    result = {
+        "requests": n_reqs, "concurrency": cfg.batch_size, "wall_s": round(wall, 2),
+        "tokens_per_sec": round(total_tokens / wall, 1) if wall > 0 else 0.0,
+        "throughput_req_s": round(n_reqs / wall, 3) if wall > 0 else 0.0,
+        "ttft_p50_ms": round(pct(ttfts, .50) * 1000),
+        "ttft_p95_ms": round(pct(ttfts, .95) * 1000),
+        "tpot_p50_ms": round(pct(tpots, .50) * 1000, 2),
+        "tpot_p95_ms": round(pct(tpots, .95) * 1000, 2),
+        "e2e_p50_ms": round(pct(e2es, .50) * 1000),
+        "e2e_p95_ms": round(pct(e2es, .95) * 1000),
+        "e2e_p99_ms": round(pct(e2es, .99) * 1000) if e2es else 0,
+    }
     result.update(sample_gpu_stats())
     return result

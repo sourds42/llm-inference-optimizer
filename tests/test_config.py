@@ -12,19 +12,19 @@ def test_defaults():
 
 def test_load_from_yaml_overrides_defaults():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
-        f.write("quant_method: gptq_w4a16\nmax_num_seqs: 16\n")
+        f.write("quant_method: bnb_int4\nbatch_size: 16\n")
         path = f.name
     try:
         cfg = ExperimentConfig.load(path)
-        assert cfg.quant_method == "gptq_w4a16"
-        assert cfg.max_num_seqs == 16
+        assert cfg.quant_method == "bnb_int4"
+        assert cfg.batch_size == 16
         assert cfg.dtype == "float16"  # untouched default
     finally:
         os.unlink(path)
 
 
 def test_to_dict_roundtrip():
-    cfg = ExperimentConfig(id="x", quant_method="awq_w4a16")
+    cfg = ExperimentConfig(id="x", quant_method="bnb_int8")
     d = cfg.to_dict()
     assert d["id"] == "x"
-    assert d["quant_method"] == "awq_w4a16"
+    assert d["quant_method"] == "bnb_int8"

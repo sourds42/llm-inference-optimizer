@@ -1,13 +1,10 @@
 # GPU-only deps, installed inside notebooks/run_on_colab.ipynb's setup cell.
-# Versions loosely pinned per the T4-validated notebooks this project ports
-# code from (LLM_capstone_quality_and_speed.ipynb et al.) -- expect to bump
-# these if Colab's default CUDA/driver combo has moved on since.
-vllm>=0.6.0
-llmcompressor
-lm-eval>=0.4.4
+# Deliberately lightweight -- no vllm/llmcompressor/lm-eval -- so setup
+# takes a couple of minutes instead of ten-plus. See src/quantize.py and
+# src/benchmark.py for what that trades away (GPTQ/AWQ, vLLM serving
+# metrics, lm_eval accuracy) in exchange for speed.
 transformers>=4.44
 accelerate
 bitsandbytes
 datasets
 huggingface_hub
-openai>=1.0
