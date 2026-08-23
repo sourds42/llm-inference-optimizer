@@ -1,9 +1,19 @@
 # Local-installable (no GPU needed) -- config, optimizer, agent-graph logic,
 # the deterministic test suite, and the results-dashboard demo all run on
 # this alone.
+#
+# langchain/langchain-core/langgraph are pinned together deliberately: a
+# preinstalled `langchain` left over from a base image (Colab's included)
+# that doesn't match the `langchain-core` version pulled in here causes
+# langchain_core's legacy debug/verbose compatibility shim to crash with
+# `AttributeError: module 'langchain' has no attribute 'debug'`. Pinning
+# all three to the same generation avoids that; notebooks/run_on_colab.ipynb
+# also uninstalls any preexisting langchain* packages before installing
+# these, so a base image's version can't linger and cause skew.
 pyyaml>=6.0
 langgraph>=0.2,<0.3
 langchain-core>=0.3,<0.4
+langchain>=0.3,<0.4
 pytest>=8.0
 matplotlib>=3.8
 pandas>=2.0
