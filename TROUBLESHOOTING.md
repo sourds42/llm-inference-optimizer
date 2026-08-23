@@ -145,14 +145,28 @@ GitHub (`File → Open notebook → GitHub`) or otherwise re-fetched to pick up
 new cells. Worth remembering before assuming a push "didn't work" when it's
 actually just not loaded yet.
 
+## 6. V2 sweep — full run confirmed, only the planned failure occurred
+
+**Result:** all 11 configs in `configs/search_space.yaml` ran to
+completion. 10/11 succeeded clean (both bnb configs included, no more
+`MatMul8bitLt` warning spam — fix #5 confirmed working). The one failure
+was exactly the planned one: `attn_implementation=flash_attention_2` →
+`"FlashAttention2 has been toggled on, but it cannot be used due to the
+following error: the package for FlashAttention2 doesn't seem to be
+installed."`
+
+Slightly different failure mode than originally assumed (package not
+installed, rather than a Turing-hardware-incompatibility error at runtime)
+— but the outcome is identical and was the intended one: `flash-attn` was
+deliberately left out of `requirements-colab.txt` (it typically needs a
+slow from-source compile, which conflicts with the "keep Colab installs
+lightweight" decision), so this config *should* fail this way. Captured
+correctly as `error` on that one row, sweep continued and completed rather
+than crashing. No fix needed — this is the sweep working as designed.
+
 ## Open questions
 
 - Is `bitsandbytes`, `transformers`, or `accelerate` (or a combination)
   actually the one forcing the torch reinstall? Not yet isolated —
   attempt #2 sidesteps the question by restoring whatever was there
   originally rather than needing to know.
-- Once V1 runs clean end to end (benchmark + perplexity), V2's sweep
-  includes `attn_implementation=flash_attention_2`,
-  which is *expected* to fail on T4 (Turing has no FA2 support) — that's a
-  planned negative result, not a bug, and should show up as an `error` field
-  on that one row in `results/experiments.jsonl`, not a crash.
