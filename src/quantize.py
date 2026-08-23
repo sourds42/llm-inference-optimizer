@@ -32,6 +32,11 @@ def load_model(cfg):
     tok = AutoTokenizer.from_pretrained(cfg.model_id)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
+    # Right-padding (the default) silently produces wrong generations on a
+    # decoder-only model when batch_size > 1 -- padded prompts shift the
+    # positions the model actually attends to for the next token. Left
+    # padding keeps every sequence's real content ending at the same index.
+    tok.padding_side = "left"
 
     kwargs = {
         "device_map": "cuda",

@@ -83,7 +83,34 @@ Parquet-converted replacement.
 **Fix applied** (`src/evaluate.py`): changed the dataset id to
 `"Salesforce/wikitext"` (same subset/split args otherwise).
 
-**Status:** pushed, not yet confirmed against a live Colab run.
+**Status:** confirmed fixed. V1's next run completed with `"error": None`
+and every field populated: `size_gb: 1.519`, `tokens_per_sec: 73.1`,
+`quality_perplexity: 29.32`, `quality_recovery_pct: 100.0` (as expected --
+this row *is* the baseline), `cost_usd_per_request: 8.5e-05`. **All three
+fixes (#1, #2, #3) hold up on a live T4.**
+
+## 4. Correctness fix (not a crash): right-padding on batched generation
+
+**Symptom:** transformers warns on every load — *"A decoder-only
+architecture is being used, but right-padding was detected! For correct
+generation results, please set `padding_side='left'`"* — surfaced during
+V1's run but didn't fail anything, since the benchmark only times
+generation, it doesn't check output correctness.
+
+**Why it matters anyway:** with `batch_size > 1` (every V2 config except
+edge cases), right-padding (transformers' tokenizer default) shifts where
+shorter prompts' real content sits relative to the model's position
+encoding, which can silently produce wrong/garbled continuations for the
+padded sequences in a batch. Since `quality_perplexity` is computed
+separately (single long sequence, not batched, so it wasn't affected), this
+wouldn't have shown up as a quality regression in the numbers — it would
+have just made the *benchmark's* generated text quietly wrong for batched
+configs, which we don't otherwise validate.
+
+**Fix applied** (`src/quantize.py`): `tok.padding_side = "left"` right after
+loading the tokenizer.
+
+**Status:** applied, not yet re-run against Colab.
 
 ## Caveat that cost a round-trip: notebook file vs. cloned repo are separate
 
