@@ -23,3 +23,19 @@ def test_filter_passing():
     c = Constraints(quality_min_recovery_pct=95)
     rows = [{"quality_recovery_pct": 96}, {"quality_recovery_pct": 50}]
     assert filter_passing(rows, c) == [rows[0]]
+
+
+def test_critical_recall_min():
+    c = Constraints(quality_min_recovery_pct=0, critical_recall_min=95)
+    good = {"quality_recovery_pct": 100, "critical_recall": 100}
+    bad = {"quality_recovery_pct": 100, "critical_recall": 80}
+    missing = {"quality_recovery_pct": 100}
+    assert satisfies(good, c)
+    assert not satisfies(bad, c)
+    assert not satisfies(missing, c)
+
+
+def test_critical_recall_min_unset_is_unconstrained():
+    c = Constraints(quality_min_recovery_pct=0)
+    row = {"quality_recovery_pct": 100}  # no critical_recall field at all
+    assert satisfies(row, c)

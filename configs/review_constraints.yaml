@@ -1,0 +1,10 @@
+# Constraints for the code-review evaluation (src/review_eval/), reusing
+# the same Constraints dataclass/filter/Pareto code as the main V1-V4
+# story. quality_min_recovery_pct here = F1 score * 100 (see
+# src/review_eval/review_task.py) -- a naming-convention reuse, not a new
+# field.
+quality_min_recovery_pct: 90.0
+critical_recall_min: 95.0
+p95_latency_ms_max: 5000
+vram_gb_max: 14.0
+cost_usd_per_request_max: null

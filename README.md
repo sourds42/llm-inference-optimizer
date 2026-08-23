@@ -50,10 +50,13 @@ src/
   agent/                   V4: tools (read-only), diagnose, propose, graph (LangGraph loop), oracle (eval-only ground truth)
   model_client.py         MockClient (free/default) / OllamaClient / AnthropicClient -- pluggable V4 backend
   report.py               results/experiments.jsonl → comparison.json + charts
+  review_eval/             code-review downstream-task eval: dataset (extends agent-review-loop's golden set), prompts, review_task (reuses quantize/optimizer/agent), metrics (precision/recall/F1/severity/critical-recall)
 eval/
   run_v1_baseline.py · run_v2_quant_sweep.py · run_v3_auto_optimizer.py · run_v4_agent_optimizer.py · compare_v1_to_v4.py
 app/demo.py               local results-dashboard (Gradio, no GPU needed) -- `python -m app.demo`
-notebooks/run_on_colab.ipynb   single T4 entrypoint, all four stages
+notebooks/
+  run_on_colab.ipynb       single T4 entrypoint, perplexity-based V1-V4 story
+  code_review_eval.ipynb   second T4 notebook -- same V1-V4 shape, but quality = code-review F1/critical-recall on a real downstream task instead of perplexity (clones agent-review-loop as a sibling for the golden-set dataset)
 tests/                    deterministic only -- no GPU needed, run right now with `pytest tests/`
 report/FINAL_REPORT.md    case study writeup (fill in after a real Colab run)
 ```
@@ -65,13 +68,15 @@ Open `notebooks/run_on_colab.ipynb` in Colab, `Runtime → T4 GPU`, run cells
 top to bottom. Install is a couple of minutes (`transformers` +
 `bitsandbytes`, nothing heavier). Each V is a separate cell/script -- V3 and
 the final report don't need the GPU at all, they just read whatever
-`results/experiments.jsonl` has so far.
+`results/experiments.jsonl` has so far. For the code-review downstream-task
+version, run `notebooks/code_review_eval.ipynb` instead (same setup, clones
+`agent-review-loop` alongside for the golden-set dataset).
 
 **Local (deterministic layers + results dashboard, no GPU required):**
 ```bash
 python -m venv .venv && source .venv/Scripts/activate   # or .venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
-pytest tests/                          # 13 tests: config, constraints, pareto, cost, agent graph smoke
+pytest tests/                          # 24 tests: config, constraints, pareto, cost, agent graph smoke, review-eval dataset/metrics
 python -m eval.run_v3_auto_optimizer   # ranks whatever results/experiments.jsonl already has
 python -m eval.run_v4_agent_optimizer  # MockClient by default; MODEL_BACKEND=ollama|anthropic for a real run
 python -m app.demo                     # results dashboard in the browser

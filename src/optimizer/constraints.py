@@ -15,6 +15,10 @@ class Constraints:
     p95_latency_ms_max: Optional[float] = None
     vram_gb_max: Optional[float] = None
     cost_usd_per_request_max: Optional[float] = None
+    # Optional, unconstrained by default -- used by src/review_eval's
+    # code-review evaluation, where a row can also carry a `critical_recall`
+    # field (recall restricted to critical-severity ground-truth items).
+    critical_recall_min: Optional[float] = None
 
     @staticmethod
     def load(path: str) -> "Constraints":
@@ -38,6 +42,10 @@ def satisfies(row: dict, constraints: Constraints) -> bool:
     if constraints.cost_usd_per_request_max is not None:
         cost = row.get("cost_usd_per_request")
         if cost is None or cost > constraints.cost_usd_per_request_max:
+            return False
+    if constraints.critical_recall_min is not None:
+        critical_recall = row.get("critical_recall")
+        if critical_recall is None or critical_recall < constraints.critical_recall_min:
             return False
     return True
 
