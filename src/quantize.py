@@ -44,6 +44,14 @@ def load_model(cfg):
     }
     if cfg.quant_method in ("bnb_int8", "bnb_int4"):
         from transformers import BitsAndBytesConfig
+        # bitsandbytes' 8-bit matmul kernel only supports float16 inputs.
+        # Qwen3-0.6B's checkpoint default is bfloat16 -- without forcing
+        # float16 here too, every single matmul call re-casts bf16->fp16
+        # and prints a warning, flooding output with thousands of repeats
+        # ("MatMul8bitLt: inputs will be cast from torch.bfloat16 to
+        # float16 during quantization"). Loading in float16 up front makes
+        # the cast a no-op and the warning goes away.
+        kwargs["torch_dtype"] = torch.float16
         kwargs["quantization_config"] = (
             BitsAndBytesConfig(load_in_8bit=True) if cfg.quant_method == "bnb_int8"
             else BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16)

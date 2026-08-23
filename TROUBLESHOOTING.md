@@ -112,6 +112,28 @@ loading the tokenizer.
 
 **Status:** applied, not yet re-run against Colab.
 
+## 5. Output flooded with `MatMul8bitLt: inputs will be cast from torch.bfloat16 to float16 during quantization`
+
+**Symptom:** during V2's bnb INT8 config, the exact same warning line
+repeats thousands of times, truncating the notebook's output and burying
+anything printed after it.
+
+**Root cause:** not a crash — bitsandbytes' 8-bit matmul kernel only
+supports `float16` inputs. `Qwen/Qwen3-0.6B`'s checkpoint default dtype is
+`bfloat16`, and `src/quantize.py`'s bnb branch only set
+`bnb_4bit_compute_dtype=float16` for the INT4 path — it never forced the
+*model's own* load dtype to `float16` for either bnb path. So the
+non-quantized layers ran in `bfloat16`, and every single 8-bit matmul call
+had to re-cast its input to `float16` first, printing this warning on every
+occurrence (once per matmul, so effectively once per token per layer).
+
+**Fix applied** (`src/quantize.py`): explicitly set `torch_dtype=torch.float16`
+for both `bnb_int8` and `bnb_int4` (previously only set for the `fp16`
+branch), so the cast is a no-op and the warning stops firing. Also matches
+T4/Turing's lack of native bf16 support anyway.
+
+**Status:** applied, not yet re-run against Colab.
+
 ## Caveat that cost a round-trip: notebook file vs. cloned repo are separate
 
 `git pull` inside the cloned repo directory (from the notebook's `git clone`
