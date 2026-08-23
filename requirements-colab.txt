@@ -1,0 +1,13 @@
+# GPU-only deps, installed inside notebooks/run_on_colab.ipynb's setup cell.
+# Versions loosely pinned per the T4-validated notebooks this project ports
+# code from (LLM_capstone_quality_and_speed.ipynb et al.) -- expect to bump
+# these if Colab's default CUDA/driver combo has moved on since.
+vllm>=0.6.0
+llmcompressor
+lm-eval>=0.4.4
+transformers>=4.44
+accelerate
+bitsandbytes
+datasets
+huggingface_hub
+openai>=1.0

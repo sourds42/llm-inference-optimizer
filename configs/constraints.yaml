@@ -1,0 +1,7 @@
+# Targets for V3/V4 to search under. Quality is expressed as % of the FP16
+# baseline's accuracy recovered (not an absolute score), since "quality" is
+# only meaningful relative to the uncompressed model.
+quality_min_recovery_pct: 95.0
+p95_latency_ms_max: 1500
+vram_gb_max: 14.0
+cost_usd_per_request_max: null

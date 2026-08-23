@@ -1,0 +1,38 @@
+# One-variable-at-a-time sweep off a single base config, per the spec's
+# "changing one variable at a time" experiment design. Every axis value
+# produces one ExperimentConfig identical to `base` except that one field.
+base:
+  model_id: "Qwen/Qwen3-0.6B"
+  quant_method: "fp16"
+  dtype: "float16"
+  max_model_len: 2048
+  max_num_seqs: 8
+  gpu_memory_utilization: 0.85
+  enable_prefix_caching: true
+  attention_backend: null
+  num_speculative_tokens: 0
+  calib_samples: 256
+  calib_maxlen: 512
+  bench_requests: 40
+  bench_concurrency: 8
+  bench_output_tokens: 64
+  eval_task: "hellaswag"
+  eval_limit: 100
+  gpu_hourly_usd: 0.35
+  results_dir: "results"
+
+axes:
+  # quantization ladder
+  quant_method: ["bnb_int8", "bnb_int4", "gptq_w4a16", "gptq_w8a16", "awq_w4a16"]
+  # batch-size tuning
+  max_num_seqs: [4, 16, 32]
+  # context-length optimization
+  max_model_len: [1024, 4096]
+  # KV-cache / prefix caching
+  enable_prefix_caching: [false]
+  # FlashAttention -- expected to fall back / fail on T4 (Turing has no FA2
+  # support); see src/runtime_opts.py. Captured as an honest negative result.
+  attention_backend: ["FLASH_ATTN"]
+  # speculative decoding -- best-effort; may not fit T4 VRAM alongside a
+  # draft model at this model size.
+  num_speculative_tokens: [3, 5]
